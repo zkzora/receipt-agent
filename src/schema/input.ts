@@ -5,6 +5,19 @@ export const AddressSchema = z
   .string()
   .regex(/^0x[a-fA-F0-9]{40}$/, 'must be a 0x-prefixed 40-char hex address');
 
+/** The same address, matched anywhere inside free text (a pasted shill/CA drop). */
+const EMBEDDED_ADDRESS_RE = /0x[a-fA-F0-9]{40}/;
+
+/**
+ * Pull the first EVM contract address out of arbitrary text. Buyers frequently
+ * paste the whole shill ("…CA: 0x… Chain: #BASE…") into `claim` instead of the
+ * structured `subject_address` field, so we recover it here. Case is preserved
+ * so an EIP-55 checksum survives. Returns null when no 0x40-hex token is present.
+ */
+export function extractAddress(text: string | undefined | null): string | null {
+  return text?.match(EMBEDDED_ADDRESS_RE)?.[0] ?? null;
+}
+
 /**
  * CAP service requirements (input). The buyer must supply EITHER an X/tweet URL
  * OR a manual (claim + subject_address) pair. URL auto-extraction is best-effort;
@@ -37,6 +50,13 @@ export function parseInput(raw: unknown): ParsedInput {
     return { ok: false, reason: result.error.issues.map((i) => i.message).join('; ') };
   }
   const v = result.data;
+  // Regex pre-pass: if no explicit subject_address was supplied, recover one from
+  // the claim text (a pasted CA). This is what keeps a real "CA drop" order from
+  // falling through to INSUFFICIENT — a valid 0x address is always enough to act.
+  if (!v.subject_address) {
+    const embedded = extractAddress(v.claim);
+    if (embedded) v.subject_address = embedded;
+  }
   const hasUrl = Boolean(v.x_url);
   const hasManual = Boolean(v.claim && v.subject_address);
   return { ok: true, value: v, hasUrl, hasManual };

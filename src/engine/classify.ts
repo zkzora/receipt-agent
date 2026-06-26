@@ -32,39 +32,56 @@ Rules:
 - Never invent claims that aren't in the text.`;
 
 /**
+ * Shill-claim signals worth spending an LLM call on. A bare "CA + chain" drop
+ * (e.g. a DexScreener post) carries none of these, so we skip the LLM entirely
+ * and go straight to a vibe_check on the address — the LLM is only needed to pull
+ * out *falsifiable* assertions for claim_check mode.
+ */
+const CLAIM_SIGNAL_RE =
+  /\b(audit(ed)?|kyc|doxx?ed|renounce[d]?|ownership|mint(ing)?|lp|liquidity|lock(ed)?|burn(ed|t)?|safu|honeypot|rug|tax|fees?|tvl|backed|insured|partnership|verified|whitelist|presale|vesting)\b/i;
+
+/**
  * LLM intake: turn raw shill text into a ticker + a list of checkable claims.
- * Degrades to a regex/heuristic extraction when the LLM is unavailable so the
- * pipeline still runs without an API key.
+ *
+ * The ticker + the on-chain subject are recovered deterministically (regex), so
+ * the LLM is never a gate: when the text has no claim signals — or the LLM is
+ * unavailable — we still return a usable vibe_check. The LLM only runs to extract
+ * falsifiable claims (audited / locked / renounced / TVL …) for claim_check mode.
  */
 export async function classify(input: ClassifyInput): Promise<Classification> {
   const text = input.claim.trim();
+  const ticker = guessTicker(text);
 
-  if (text.length > 0) {
-    const out = await chatJson<Partial<Classification>>({
-      system: SYSTEM,
-      user: input.xUrl ? `Source: ${input.xUrl}\n\nClaim:\n${text}` : `Claim:\n${text}`,
-      maxTokens: 500,
-    });
-    if (out && Array.isArray(out.claims)) {
-      return {
-        mode: out.mode === 'vibe_check' ? 'vibe_check' : out.claims.length > 0 ? 'claim_check' : 'vibe_check',
-        ticker: normaliseTicker(out.ticker) ?? guessTicker(text),
-        claims: out.claims.filter((c): c is string => typeof c === 'string' && c.trim().length > 0),
-      };
-    }
-    log.warn('LLM classify unavailable — using heuristic extraction');
+  // Nothing checkable to assert (pure CA drop) → don't spend an LLM call.
+  if (!CLAIM_SIGNAL_RE.test(text)) {
+    return { mode: 'vibe_check', ticker, claims: [] };
   }
 
-  // Heuristic fallback: ticker via regex, treat the whole claim as one assertion.
-  return {
-    mode: text.length > 0 ? 'claim_check' : 'vibe_check',
-    ticker: guessTicker(text),
-    claims: text.length > 0 ? [text] : [],
-  };
+  const out = await chatJson<Partial<Classification>>({
+    system: SYSTEM,
+    user: input.xUrl ? `Source: ${input.xUrl}\n\nClaim:\n${text}` : `Claim:\n${text}`,
+    maxTokens: 500,
+  });
+  if (out && Array.isArray(out.claims)) {
+    const claims = out.claims.filter((c): c is string => typeof c === 'string' && c.trim().length > 0);
+    return {
+      mode: claims.length > 0 ? 'claim_check' : 'vibe_check',
+      ticker: normaliseTicker(out.ticker) ?? ticker,
+      claims,
+    };
+  }
+
+  // LLM unavailable: degrade to a vibe_check on the address rather than forcing
+  // the whole blob into one unverifiable "claim".
+  log.warn('LLM classify unavailable — degrading to vibe_check');
+  return { mode: 'vibe_check', ticker, claims: [] };
 }
 
+/** Ticker from "$XOCHI", or a labelled "Token: XOCHI" / "Ticker: XOCHI". */
 function guessTicker(text: string): string {
-  return normaliseTicker(text.match(/\$[A-Za-z0-9]{2,10}/)?.[0]) ?? '$TOKEN';
+  const dollar = text.match(/\$[A-Za-z][A-Za-z0-9]{1,9}/)?.[0];
+  const labelled = text.match(/(?:token|ticker|symbol)\s*[:#-]?\s*\$?([A-Za-z][A-Za-z0-9]{1,9})/i)?.[1];
+  return normaliseTicker(dollar) ?? normaliseTicker(labelled) ?? '$TOKEN';
 }
 
 function normaliseTicker(raw: string | undefined | null): string | null {
