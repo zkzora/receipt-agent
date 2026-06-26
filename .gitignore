@@ -23,6 +23,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# frontend (deployed separately via Cloudflare Pages)
+web/
+
 # runtime artifacts
 out/
 tmp/
