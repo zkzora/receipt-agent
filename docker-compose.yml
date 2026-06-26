@@ -1,0 +1,16 @@
+# Convenience wrapper for running the RECEIPT agent on a VPS.
+#   docker compose up -d --build
+# Secrets/config come from .env (see .env.example) — never committed.
+services:
+  receipt-agent:
+    build: .
+    image: receipt-agent:latest
+    container_name: receipt-agent
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Force live mode in production regardless of what .env says.
+      CAP_MODE: live
+      PORT: 8787
+    ports:
+      - "8787:8787"

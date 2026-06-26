@@ -1,0 +1,29 @@
+# deps
+node_modules/
+web/node_modules/
+.pnpm-store/
+
+# build
+dist/
+web/dist/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.local
+*.key
+
+# logs
+*.log
+logs/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# runtime artifacts
+out/
+tmp/
+receipts-out/

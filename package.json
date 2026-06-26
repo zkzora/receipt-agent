@@ -1,0 +1,46 @@
+{
+  "name": "receipt-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RECEIPT — on-chain lie detector for crypto shills. A CAP agent on the CROO Agent Store.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.7.0",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "smoke:receipt": "tsx src/receipt/smoke.ts",
+    "web:dev": "pnpm --filter receipt-web dev",
+    "web:build": "pnpm --filter receipt-web build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@croo-network/sdk": "^0.2.1",
+    "@fontsource/inter": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "pino": "^9.5.0",
+    "react": "^18.3.1",
+    "satori": "^0.12.1",
+    "viem": "^2.21.45",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "eslint": "^9.14.0",
+    "pino-pretty": "^11.3.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.13.0"
+  }
+}

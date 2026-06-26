@@ -1,0 +1,20 @@
+# Never copy installed deps (the image installs fresh, linux binaries) or secrets.
+node_modules
+**/node_modules
+.env
+.env.*
+!.env.example
+
+# Web build output + the website source (the agent image doesn't serve the site).
+web/dist
+web/.vite
+dist
+
+# Local artifacts / noise.
+receipts-out
+*.log
+.git
+.gitignore
+.DS_Store
+.claude
+*.md
