@@ -45,16 +45,39 @@ export type ParsedInput =
  * (SPEC §4.3 / §5). This returns `ok:false` only for malformed payloads.
  */
 export function parseInput(raw: unknown): ParsedInput {
+  // CROO delivers the buyer's order as `{ text: "…" }`. Our schema `.strip()`s any
+  // unknown key, so an un-normalized `text` is discarded *before* extractAddress()
+  // can recover a pasted CA — every CROO order then falls to INSUFFICIENT. Map
+  // `text` → `claim` up front (only when it's a usable string, and only if no
+  // explicit `claim` was supplied) so the rest of the pipeline sees it.
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    'text' in raw &&
+    !('claim' in raw) &&
+    typeof (raw as { text?: unknown }).text === 'string'
+  ) {
+    raw = { ...(raw as object), claim: (raw as { text: string }).text };
+  }
+
   const result = InputSchema.safeParse(raw);
   if (!result.success) {
     return { ok: false, reason: result.error.issues.map((i) => i.message).join('; ') };
   }
   const v = result.data;
   // Regex pre-pass: if no explicit subject_address was supplied, recover one from
-  // the claim text (a pasted CA). This is what keeps a real "CA drop" order from
-  // falling through to INSUFFICIENT — a valid 0x address is always enough to act.
+  // any free-text field (a pasted CA). This is what keeps a real "CA drop" order
+  // from falling through to INSUFFICIENT — a valid 0x address is always enough to
+  // act. We scan EVERY candidate string (claim, x_url, and CROO's raw `text`) and
+  // take the first that yields an address; `??` alone would stop at the first
+  // non-null field even when it has no address in it.
   if (!v.subject_address) {
-    const embedded = extractAddress(v.claim);
+    const rawText =
+      raw && typeof raw === 'object' && typeof (raw as { text?: unknown }).text === 'string'
+        ? (raw as { text: string }).text
+        : null;
+    const embedded =
+      extractAddress(v.claim) ?? extractAddress(v.x_url) ?? extractAddress(rawText);
     if (embedded) v.subject_address = embedded;
   }
   const hasUrl = Boolean(v.x_url);
