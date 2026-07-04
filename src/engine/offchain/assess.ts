@@ -21,7 +21,7 @@ Rules:
 - Be conservative: a false "supported"/"contradicted" is worse than "unverifiable".`;
 
 export async function assessClaims(
-  subject: string,
+  subject: string | null,
   address: string,
   claims: string[],
   sources: OffchainSource[],
@@ -66,8 +66,8 @@ function normalise(
   return { claim: a.claim, status, evidence: evidence.slice(0, 240), source_url: sourceUrl };
 }
 
-function buildPrompt(subject: string, address: string, claims: string[], sources: OffchainSource[]): string {
-  const lines: string[] = [`Token: ${subject} (Base ${address})`, '', 'Claims to verify:'];
+function buildPrompt(subject: string | null, address: string, claims: string[], sources: OffchainSource[]): string {
+  const lines: string[] = [`Token: ${subject ?? 'ticker unknown'} (Base ${address})`, '', 'Claims to verify:'];
   claims.forEach((c) => lines.push(`- ${c}`));
   lines.push('', 'Project pages (verbatim text excerpts):');
   sources.forEach((s, i) => {

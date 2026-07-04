@@ -39,7 +39,7 @@ export async function runPipeline(
 
   if (!parsed.ok) {
     log.warn({ reason: parsed.reason }, 'input failed validation → INSUFFICIENT');
-    return insufficient(null);
+    return insufficient(null, parsed.reason);
   }
   if (isInsufficientInput(parsed.value)) {
     return insufficient(parsed.value.x_url ?? null);
@@ -61,7 +61,7 @@ export async function runPipeline(
   if (!subjectAddress) {
     return {
       mode: 'insufficient',
-      subject: classified.ticker,
+      subject: classified.ticker ?? '$UNKNOWN',
       subject_address: null,
       source_url: sourceUrl,
       claims_detected: classified.claims,
@@ -86,15 +86,18 @@ export async function runPipeline(
   // can't (it feeds HONESTY only). It runs after evidence so it can reuse the
   // authoritative website/repo links DexScreener registered for the token.
   const evidence = await gatherEvidence(subjectAddress, deps.cap);
+  // Prefer the DexScreener-reported symbol when the claim text gave no ticker,
+  // so off-chain search gets a real symbol to look for — never a placeholder.
+  const resolvedTicker = classified.ticker ?? tickerFromEvidence(evidence);
   const offchain = await gatherOffchain({
-    subject: classified.ticker,
+    subject: resolvedTicker,
     address: subjectAddress,
     claims: classified.claims,
     claimText,
     xUrl: sourceUrl,
     discovered: evidence.liquidity.links,
   });
-  const subject = classified.ticker !== '$TOKEN' ? classified.ticker : tickerFromEvidence(evidence) ?? classified.ticker;
+  const subject = resolvedTicker ?? '$UNKNOWN';
 
   const judgement = await judge(subject, classified.claims, evidence);
   const { verdict, confidence, caveats, axes, claimChecks } = gate(
@@ -129,7 +132,10 @@ function tickerFromEvidence(evidence: { liquidity: { symbol: string | null } }):
   return sym ? `$${sym.replace(/^\$/, '').toUpperCase()}` : null;
 }
 
-function insufficient(sourceUrl: string | null): Analysis {
+function insufficient(
+  sourceUrl: string | null,
+  caveats = 'No token address and no checkable claim were provided.',
+): Analysis {
   return {
     mode: 'insufficient',
     subject: '$—',
@@ -143,6 +149,6 @@ function insufficient(sourceUrl: string | null): Analysis {
     axes: [],
     verdict: 'INSUFFICIENT',
     confidence: 'LOW',
-    caveats: 'No token address and no checkable claim were provided.',
+    caveats,
   };
 }

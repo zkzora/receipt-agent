@@ -7,7 +7,9 @@ import { classifyUrl, fetchReadable, harvestUrls, isTwitterUrl, webSearch } from
 const log = logger.child({ mod: 'offchain' });
 
 export interface OffchainInput {
-  subject: string;
+  /** Display ticker, or null when none could be recovered — in which case the
+   *  keyed web-search step is skipped rather than searching for a placeholder. */
+  subject: string | null;
   address: string;
   claims: string[];
   /** Raw pasted claim text — URLs the shill linked are harvested from here. */
@@ -49,9 +51,11 @@ export async function gatherOffchain(input: OffchainInput): Promise<OffchainSnap
   const all = [...discovered, ...harvested, ...(input.xUrl ? [input.xUrl] : [])];
   const skipped = [...new Set(all.filter(isTwitterUrl))];
 
-  // 2. Optional discovery (keyed search only — no-op without a key).
-  const query = `${input.subject} ${input.address} official site`.trim();
-  const searched = await webSearch(query);
+  // 2. Optional discovery (keyed search only — no-op without a key). Skip the
+  //    search entirely when no real ticker was resolved — searching for "null"
+  //    or a placeholder wastes a keyed API call and returns garbage.
+  const query = input.subject ? `${input.subject} ${input.address} official site`.trim() : '';
+  const searched = query ? await webSearch(query) : [];
   const searchUrls = searched.map((s) => s.url).filter((u) => !isTwitterUrl(u));
   const searchTitle = new Map(searched.map((s) => [s.url, s.title]));
 

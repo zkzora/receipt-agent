@@ -5,17 +5,43 @@ export const AddressSchema = z
   .string()
   .regex(/^0x[a-fA-F0-9]{40}$/, 'must be a 0x-prefixed 40-char hex address');
 
-/** The same address, matched anywhere inside free text (a pasted shill/CA drop). */
-const EMBEDDED_ADDRESS_RE = /0x[a-fA-F0-9]{40}/;
+/**
+ * The same address, matched anywhere inside free text (a pasted shill/CA drop).
+ * Bounded on both sides so a mistyped address — one hex char short or long — is
+ * never truncated/matched as if it were a valid 40-char address; an unanchored
+ * regex would happily match the first 40 of a 41-char run and silently proceed
+ * on the wrong address.
+ */
+const EMBEDDED_ADDRESS_RE = /(?<![a-fA-F0-9])0x[a-fA-F0-9]{40}(?![a-fA-F0-9])/;
+
+/** Any 0x-prefixed hex run, valid length or not — used to catch a mistyped
+ *  address so we can surface an honest error instead of quietly ignoring it. */
+const HEX_TOKEN_RE = /0x[a-fA-F0-9]+/;
 
 /**
  * Pull the first EVM contract address out of arbitrary text. Buyers frequently
  * paste the whole shill ("…CA: 0x… Chain: #BASE…") into `claim` instead of the
  * structured `subject_address` field, so we recover it here. Case is preserved
- * so an EIP-55 checksum survives. Returns null when no 0x40-hex token is present.
+ * so an EIP-55 checksum survives. Returns null when no exact 0x40-hex token is
+ * present (see `findMalformedAddress` for detecting a near-miss).
  */
 export function extractAddress(text: string | undefined | null): string | null {
   return text?.match(EMBEDDED_ADDRESS_RE)?.[0] ?? null;
+}
+
+/**
+ * Detect a 0x-prefixed hex token that is NOT exactly 40 hex chars — a mistyped
+ * contract address (one digit dropped/added, or a truncated paste). Only
+ * meaningful to call once `extractAddress` has failed to find a valid one.
+ */
+export function findMalformedAddress(
+  text: string | undefined | null,
+): { candidate: string; hexLength: number } | null {
+  const m = text?.match(HEX_TOKEN_RE);
+  if (!m) return null;
+  const hexLength = m[0].length - 2;
+  if (hexLength === 40) return null;
+  return { candidate: m[0], hexLength };
 }
 
 /**
@@ -78,7 +104,21 @@ export function parseInput(raw: unknown): ParsedInput {
         : null;
     const embedded =
       extractAddress(v.claim) ?? extractAddress(v.x_url) ?? extractAddress(rawText);
-    if (embedded) v.subject_address = embedded;
+    if (embedded) {
+      v.subject_address = embedded;
+    } else {
+      // No valid 40-char address, but there may be a mistyped one (wrong length)
+      // in the text — surface that honestly instead of silently falling through
+      // to "no address provided", which reads as if none was ever attempted.
+      const malformed =
+        findMalformedAddress(v.claim) ?? findMalformedAddress(v.x_url) ?? findMalformedAddress(rawText);
+      if (malformed) {
+        return {
+          ok: false,
+          reason: `Address format invalid — expected 0x + 40 hex characters, got ${malformed.hexLength} characters`,
+        };
+      }
+    }
   }
   const hasUrl = Boolean(v.x_url);
   const hasManual = Boolean(v.claim && v.subject_address);

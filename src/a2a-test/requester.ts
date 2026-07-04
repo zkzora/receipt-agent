@@ -41,11 +41,13 @@ const TIMEOUT_MS = 6 * 60 * 1000;
 
 /** The shill we ask RECEIPT to grade. Sent in CROO's native `{ text }` shape —
  *  which also exercises the parseInput text→claim recovery end-to-end. */
-const TEST_PAYLOAD = {
-  text:
-    'Token: XOCHI ($XOCHI) CA: 0x23c384C5b5a2033aD45a914eD3D489494ab0E021 ' +
-    'Chain: #BASE MC: $56367 — fully organic growth, LP locked, no dev wallet',
-};
+const TEST_PAYLOAD = process.env.CROO_REQUIREMENTS_JSON
+  ? JSON.parse(process.env.CROO_REQUIREMENTS_JSON)
+  : {
+      text:
+        'Token: XOCHI ($XOCHI) CA: 0x23c384C5b5a2033aD45a914eD3D489494ab0E021 ' +
+        'Chain: #BASE MC: $56367 — fully organic growth, LP locked, no dev wallet',
+    };
 
 // ── timestamped trace so the full A2A handshake is greppable in one screenshot ─
 const startedAt = Date.now();

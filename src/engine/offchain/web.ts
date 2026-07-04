@@ -30,7 +30,7 @@ export function harvestUrls(texts: (string | null | undefined)[]): string[] {
   return [...out];
 }
 
-export function classifyUrl(url: string, subject: string): OffchainSourceKind {
+export function classifyUrl(url: string, subject: string | null): OffchainSourceKind {
   let host = '';
   let path = '';
   try {
@@ -42,7 +42,7 @@ export function classifyUrl(url: string, subject: string): OffchainSourceKind {
   }
   if (/(^|\.)github\.com$/.test(host)) return 'github';
   if (/(^|\.)gitbook\.io$/.test(host) || /^docs?\./.test(host) || path.startsWith('/docs')) return 'docs';
-  const ticker = subject.replace(/^\$/, '').toLowerCase();
+  const ticker = subject?.replace(/^\$/, '').toLowerCase() ?? '';
   if (ticker.length >= 3 && host.includes(ticker)) return 'official_site';
   return 'reference';
 }

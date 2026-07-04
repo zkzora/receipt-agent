@@ -6,8 +6,8 @@ const log = logger.child({ mod: 'classify' });
 export interface Classification {
   /** "claim_check" when there are checkable assertions, else "vibe_check". */
   mode: 'claim_check' | 'vibe_check';
-  /** Display ticker like "$LUNAR" (best-effort). */
-  ticker: string;
+  /** Display ticker like "$LUNAR" (best-effort), or null when none could be found. */
+  ticker: string | null;
   /** Normalised, individually-checkable claims pulled from the shill text. */
   claims: string[];
 }
@@ -21,7 +21,7 @@ interface ClassifyInput {
 const SYSTEM = `You are the intake stage of an on-chain lie detector for crypto shills.
 Given a shill claim about a token, extract structured data. Respond with ONLY a JSON object:
 {
-  "ticker": "$SYMBOL or $TOKEN if unknown",
+  "ticker": "$SYMBOL, or null if unknown",
   "claims": ["each distinct checkable assertion as a short string"],
   "mode": "claim_check" | "vibe_check"
 }
@@ -77,11 +77,12 @@ export async function classify(input: ClassifyInput): Promise<Classification> {
   return { mode: 'vibe_check', ticker, claims: [] };
 }
 
-/** Ticker from "$XOCHI", or a labelled "Token: XOCHI" / "Ticker: XOCHI". */
-function guessTicker(text: string): string {
+/** Ticker from "$XOCHI", or a labelled "Token: XOCHI" / "Ticker: XOCHI". Null when
+ *  nothing is found — callers must not invent a placeholder symbol to search for. */
+function guessTicker(text: string): string | null {
   const dollar = text.match(/\$[A-Za-z][A-Za-z0-9]{1,9}/)?.[0];
   const labelled = text.match(/(?:token|ticker|symbol)\s*[:#-]?\s*\$?([A-Za-z][A-Za-z0-9]{1,9})/i)?.[1];
-  return normaliseTicker(dollar) ?? normaliseTicker(labelled) ?? '$TOKEN';
+  return normaliseTicker(dollar) ?? normaliseTicker(labelled) ?? null;
 }
 
 function normaliseTicker(raw: string | undefined | null): string | null {
