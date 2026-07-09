@@ -17,6 +17,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "smoke:receipt": "tsx src/receipt/smoke.ts",
     "smoke:solana": "tsx src/receipt/smoke-solana.ts",
+    "smoke:subs": "tsx src/subscriptions/smoke.ts",
     "a2a:test": "tsx src/a2a-test/requester.ts",
     "web:dev": "pnpm --filter receipt-web dev",
     "web:build": "pnpm --filter receipt-web build"

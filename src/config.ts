@@ -48,6 +48,10 @@ const EnvSchema = z.object({
   SUBAGENT_LIQUIDITY_SERVICE_ID: z.string().optional().default(''),
   SUBAGENT_DEPLOYER_SERVICE_ID: z.string().optional().default(''),
 
+  // Subscriptions (monthly all-chain plan with a daily scan cap)
+  SUBSCRIPTION_DB_PATH: z.string().default('./data/receipt.db'),
+  SUBSCRIPTION_DAILY_LIMIT: z.coerce.number().int().positive().default(10),
+
   // Off-chain evidence stream (feeds the HONESTY axis ONLY — never SAFETY). On by
   // default; reads public sites/repos the shill linked + (optionally) web search.
   // X/Twitter URLs are NEVER fetched — kept only as a source_url reference.
@@ -118,6 +122,10 @@ export const config = {
     security: env.SUBAGENT_SECURITY_SERVICE_ID,
     liquidity: env.SUBAGENT_LIQUIDITY_SERVICE_ID,
     deployer: env.SUBAGENT_DEPLOYER_SERVICE_ID,
+  },
+  subscriptions: {
+    dbPath: env.SUBSCRIPTION_DB_PATH,
+    dailyLimit: env.SUBSCRIPTION_DAILY_LIMIT,
   },
   offchain: {
     enabled: env.OFFCHAIN_ENABLED,
