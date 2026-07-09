@@ -1,9 +1,10 @@
 import type { ReceiptOutput } from '../schema/output.js';
 import type { CapClient } from '../cap/types.js';
-import { parseInput, isInsufficientInput } from '../schema/input.js';
+import { parseInput, isInsufficientInput, detectChain, type SubjectChain } from '../schema/input.js';
 import { logger } from '../logger.js';
 import { classify } from './classify.js';
 import { gatherEvidence } from './evidence/index.js';
+import { gatherEvidenceSolana } from './evidence/solana/index.js';
 import { gatherOffchain } from './offchain/index.js';
 import { judge } from './judge.js';
 import { gate } from './gating.js';
@@ -63,6 +64,7 @@ export async function runPipeline(
       mode: 'insufficient',
       subject: classified.ticker ?? '$UNKNOWN',
       subject_address: null,
+      chain: 'base',
       source_url: sourceUrl,
       claims_detected: classified.claims,
       claim_checks: [],
@@ -76,8 +78,13 @@ export async function runPipeline(
     };
   }
 
+  // Address SHAPE is the authority for routing — never the buyer's stated
+  // `chain` field, since evidence gathering can only run against the chain the
+  // address structurally belongs to. Base stays the default path (STEP 3).
+  const chain: SubjectChain = detectChain(subjectAddress);
+
   log.info(
-    { ticker: classified.ticker, subjectAddress, claims: classified.claims.length, mode: classified.mode },
+    { ticker: classified.ticker, subjectAddress, chain, claims: classified.claims.length, mode: classified.mode },
     'running verification pipeline',
   );
 
@@ -85,7 +92,10 @@ export async function runPipeline(
   // Off-chain reads the project's OWN public pages to verify claims the chain
   // can't (it feeds HONESTY only). It runs after evidence so it can reuse the
   // authoritative website/repo links DexScreener registered for the token.
-  const evidence = await gatherEvidence(subjectAddress, deps.cap);
+  // gate()/judge() are entirely chain-agnostic — both Solana and Base evidence
+  // gathering resolve to the same Evidence shape, so nothing downstream of this
+  // line needs to know which chain produced it.
+  const evidence = chain === 'solana' ? await gatherEvidenceSolana(subjectAddress) : await gatherEvidence(subjectAddress, deps.cap);
   // Prefer the DexScreener-reported symbol when the claim text gave no ticker,
   // so off-chain search gets a real symbol to look for — never a placeholder.
   const resolvedTicker = classified.ticker ?? tickerFromEvidence(evidence);
@@ -113,6 +123,7 @@ export async function runPipeline(
     mode: classified.mode,
     subject,
     subject_address: subjectAddress,
+    chain,
     source_url: sourceUrl,
     claims_detected: classified.claims,
     claim_checks: claimChecks,
@@ -140,6 +151,7 @@ function insufficient(
     mode: 'insufficient',
     subject: '$—',
     subject_address: null,
+    chain: 'base',
     source_url: sourceUrl,
     claims_detected: [],
     claim_checks: [],

@@ -39,6 +39,10 @@ const EnvSchema = z.object({
   GOPLUS_APP_KEY: z.string().optional().default(''),
   GOPLUS_APP_SECRET: z.string().optional().default(''),
 
+  // Solana — public RPC by default; swap in a paid endpoint (Helius/Triton/QuickNode)
+  // if rate limits bite, same as BASE_RPC_URL.
+  SOLANA_RPC_URL: z.string().url().default('https://api.mainnet-beta.solana.com'),
+
   // A2A sub-agents
   SUBAGENT_SECURITY_SERVICE_ID: z.string().optional().default(''),
   SUBAGENT_LIQUIDITY_SERVICE_ID: z.string().optional().default(''),
@@ -106,6 +110,9 @@ export const config = {
     basescanApiKey: env.BASESCAN_API_KEY,
     goPlusKey: env.GOPLUS_APP_KEY,
     goPlusSecret: env.GOPLUS_APP_SECRET,
+  },
+  solana: {
+    rpcUrl: env.SOLANA_RPC_URL,
   },
   subAgents: {
     security: env.SUBAGENT_SECURITY_SERVICE_ID,

@@ -108,11 +108,18 @@ export const AttestationSchema = z.object({
 });
 export type AttestationOut = z.infer<typeof AttestationSchema>;
 
+/** Which chain the subject token lives on — independent of `attestation.chain`,
+ *  which is where CAP anchors the deliverable hash (always Base, regardless of
+ *  what chain the analyzed token is on). */
+export const SubjectChainSchema = z.enum(['base', 'solana']);
+export type SubjectChain = z.infer<typeof SubjectChainSchema>;
+
 /** The CAP deliverable (SPEC §7). This is the contract the buyer receives. */
 export const OutputSchema = z.object({
   mode: ModeSchema,
   subject: z.string(),
   subject_address: AddressOrNull(),
+  chain: SubjectChainSchema,
   source_url: z.string().nullable(),
   claims_detected: z.array(z.string()),
   claim_checks: z.array(ClaimCheckSchema),
@@ -129,7 +136,11 @@ export const OutputSchema = z.object({
 export type ReceiptOutput = z.infer<typeof OutputSchema>;
 
 function AddressOrNull() {
-  return z.union([z.string().regex(/^0x[a-fA-F0-9]{40}$/), z.null()]);
+  return z.union([
+    z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/),
+    z.null(),
+  ]);
 }
 
 /** Color tokens used by both the PNG renderer and the website (kept in sync). */

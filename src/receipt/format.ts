@@ -129,6 +129,10 @@ function offchainLines(o: OffchainSnapshot): string[] {
 export interface BuildModelArgs {
   subject: string;
   subjectAddress: string | null;
+  /** Which chain the subject lives on — drives the "(Base)"/"(Solana)" address
+   *  suffix. Defaults to 'base' so existing callers keep compiling/rendering
+   *  identically without having to pass it. */
+  chain?: 'base' | 'solana';
   sourceUrl: string | null;
   isManual: boolean;
   claims: string[];
@@ -150,9 +154,10 @@ export function buildReceiptModel(a: BuildModelArgs): ReceiptModel {
     '0',
   )}Z`;
 
+  const chainLabel = a.chain === 'solana' ? 'Solana' : 'Base';
   return {
     subject: a.subject,
-    addressLine: `${shortAddr(a.subjectAddress)}${a.subjectAddress ? ' (Base)' : ''}`,
+    addressLine: `${shortAddr(a.subjectAddress)}${a.subjectAddress ? ` (${chainLabel})` : ''}`,
     sourceLine: a.sourceUrl
       ? a.sourceUrl.replace(/^https?:\/\//, '').slice(0, WIDTH - 2)
       : a.isManual

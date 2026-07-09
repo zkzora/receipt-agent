@@ -45,6 +45,42 @@ export function findMalformedAddress(
 }
 
 /**
+ * A Solana token mint / account address: base58, 32-44 chars. Covers pump.fun's
+ * vanity "...pump" suffix mints (still ordinary base58 pubkeys, just a mined
+ * suffix) — no special-casing needed since they already match this shape.
+ */
+export const SolanaAddressSchema = z
+  .string()
+  .regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'must be a base58 Solana address (32-44 chars)');
+
+/** Same bounding logic as {@link EMBEDDED_ADDRESS_RE}, for base58 tokens. */
+const EMBEDDED_SOLANA_ADDRESS_RE =
+  /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])/g;
+
+/**
+ * Pull a Solana address out of free text (a pasted CA drop). Only ever called
+ * after {@link extractAddress} has failed, so this never fires on Base orders.
+ * Free text can contain other base58-shaped noise (tx signatures, etc.) — when
+ * there are multiple candidates, prefer one ending in the common pump.fun "pump"
+ * vanity suffix, else take the first match.
+ */
+export function extractSolanaAddress(text: string | undefined | null): string | null {
+  const matches = text?.match(EMBEDDED_SOLANA_ADDRESS_RE);
+  if (!matches || matches.length === 0) return null;
+  return matches.find((m) => m.toLowerCase().endsWith('pump')) ?? matches[0];
+}
+
+/** The two chains this agent can verify a token against. */
+export type SubjectChain = 'base' | 'solana';
+
+/** Structural chain detection from the address shape — authoritative over
+ *  whatever the buyer's `chain` field claims, since evidence gathering can only
+ *  run against the chain the address actually belongs to. */
+export function detectChain(address: string): SubjectChain {
+  return AddressSchema.safeParse(address).success ? 'base' : 'solana';
+}
+
+/**
  * CAP service requirements (input). The buyer must supply EITHER an X/tweet URL
  * OR a manual (claim + subject_address) pair. URL auto-extraction is best-effort;
  * the manual path is the reliable primary path for the demo (see SPEC §2, §7).
@@ -53,7 +89,7 @@ export const InputSchema = z
   .object({
     x_url: z.string().url().optional(),
     claim: z.string().min(1).max(2000).optional(),
-    subject_address: AddressSchema.optional(),
+    subject_address: z.union([AddressSchema, SolanaAddressSchema]).optional(),
     chain: z.string().default('base'),
   })
   .strip();
@@ -107,16 +143,25 @@ export function parseInput(raw: unknown): ParsedInput {
     if (embedded) {
       v.subject_address = embedded;
     } else {
-      // No valid 40-char address, but there may be a mistyped one (wrong length)
-      // in the text — surface that honestly instead of silently falling through
-      // to "no address provided", which reads as if none was ever attempted.
-      const malformed =
-        findMalformedAddress(v.claim) ?? findMalformedAddress(v.x_url) ?? findMalformedAddress(rawText);
-      if (malformed) {
-        return {
-          ok: false,
-          reason: `Address format invalid — expected 0x + 40 hex characters, got ${malformed.hexLength} characters`,
-        };
+      // No 0x address either exact or embedded — try a Solana CA drop before
+      // giving up (e.g. a pasted pump.fun mint with no 0x anywhere in sight).
+      const embeddedSol =
+        extractSolanaAddress(v.claim) ?? extractSolanaAddress(v.x_url) ?? extractSolanaAddress(rawText);
+      if (embeddedSol) {
+        v.subject_address = embeddedSol;
+      } else {
+        // No valid address of either shape, but there may be a mistyped 0x one
+        // (wrong length) in the text — surface that honestly instead of silently
+        // falling through to "no address provided", which reads as if none was
+        // ever attempted.
+        const malformed =
+          findMalformedAddress(v.claim) ?? findMalformedAddress(v.x_url) ?? findMalformedAddress(rawText);
+        if (malformed) {
+          return {
+            ok: false,
+            reason: `Address format invalid — expected 0x + 40 hex characters, got ${malformed.hexLength} characters`,
+          };
+        }
       }
     }
   }
