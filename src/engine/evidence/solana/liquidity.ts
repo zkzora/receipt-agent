@@ -160,10 +160,33 @@ export async function solanaLiquidityCheck(address: string): Promise<SolanaLiqui
     });
   }
 
+  // pump.fun LP status — derived from the dexIds already in `pairs` (no extra
+  // call), only when Raydium didn't resolve a burn % (the usual pump.fun case).
+  // pump.fun permanently burns the migration LP at graduation, and a token still
+  // on the bonding curve has protocol-controlled liquidity the dev cannot pull —
+  // either way the rug-via-LP vector is closed. (LP added on OTHER DEXes after
+  // graduation is not auto-burned and is out of scope here.)
+  let pumpLpLocked: boolean | null = null;
+  if (!raydium) {
+    const dexIds = new Set(pairs.map((p) => (p.dexId ?? '').toLowerCase()));
+    if (dexIds.has('pumpswap')) {
+      findings.push({ metric: 'LP burned', value: 'yes (PumpSwap migration)', source: 'pump.fun', status: 'ok' });
+      pumpLpLocked = true;
+    } else if (dexIds.has('pumpfun')) {
+      findings.push({
+        metric: 'LP status',
+        value: 'bonding curve — protocol-locked (pre-graduation)',
+        source: 'pump.fun',
+        status: 'ok',
+      });
+      pumpLpLocked = true;
+    }
+  }
+
   return {
     signal,
     findings,
-    lpBurnedOrLocked: raydium ? raydium.burnPercent >= LP_BURN_THRESHOLD_PCT : null,
+    lpBurnedOrLocked: raydium ? raydium.burnPercent >= LP_BURN_THRESHOLD_PCT : pumpLpLocked,
   };
 }
 
@@ -181,10 +204,9 @@ async function raydiumBurnCheck(
   dexId: string | undefined,
 ): Promise<{ burnPercent: number; volumeFeeUsd: number | null } | null> {
   if (dexId && !RAYDIUM_DEX_IDS.has(dexId)) {
-    // Still worth checking — the deepest pool might not be the Raydium one even
-    // when a Raydium pool also exists — but skip the extra call when we already
-    // know the deepest pool is neither Raydium nor ambiguous (e.g. clearly Orca).
-    if (dexId === 'orca') return null;
+    // Skip the extra call when the deepest pool clearly isn't Raydium and is a
+    // venue handled elsewhere (Orca, or pump.fun's bonding curve / PumpSwap).
+    if (dexId === 'orca' || dexId === 'pumpfun' || dexId === 'pumpswap') return null;
   }
   try {
     const url = `https://api-v3.raydium.io/pools/info/mint?mint1=${mint}&poolType=all&poolSortField=liquidity&sortType=desc&pageSize=5&page=1`;
