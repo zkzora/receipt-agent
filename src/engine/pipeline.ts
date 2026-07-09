@@ -1,4 +1,4 @@
-import type { ReceiptOutput } from '../schema/output.js';
+import type { ReceiptOutput, ScanMode } from '../schema/output.js';
 import type { CapClient } from '../cap/types.js';
 import { parseInput, isInsufficientInput, detectChain, type SubjectChain } from '../schema/input.js';
 import { logger } from '../logger.js';
@@ -8,6 +8,7 @@ import { gatherEvidenceSolana } from './evidence/solana/index.js';
 import { gatherOffchain } from './offchain/index.js';
 import { judge } from './judge.js';
 import { gate } from './gating.js';
+import { filterFindingsForMode } from './scan-mode.js';
 
 const log = logger.child({ mod: 'engine' });
 
@@ -19,6 +20,8 @@ export type Analysis = Omit<ReceiptOutput, 'receipt_image' | 'attestation'>;
  *  path (live mode only); without it every check uses its local provider. */
 export interface PipelineDeps {
   cap?: CapClient;
+  /** Service tier (resolved from the order's serviceId). Defaults to `full`. */
+  mode?: ScanMode;
 }
 
 /**
@@ -36,19 +39,50 @@ export async function runPipeline(
   requirements: Record<string, unknown>,
   deps: PipelineDeps = {},
 ): Promise<Analysis> {
+  const mode = deps.mode ?? 'full';
   const parsed = parseInput(requirements);
 
   if (!parsed.ok) {
     log.warn({ reason: parsed.reason }, 'input failed validation → INSUFFICIENT');
-    return insufficient(null, parsed.reason);
+    return insufficient(null, parsed.reason, mode);
   }
   if (isInsufficientInput(parsed.value)) {
-    return insufficient(parsed.value.x_url ?? null);
+    return insufficient(parsed.value.x_url ?? null, undefined, mode);
   }
 
   const sourceUrl = parsed.value.x_url ?? null;
   const subjectAddress = parsed.value.subject_address ?? null;
   const claimText = parsed.value.claim ?? '';
+
+  // ── LP tier: lightweight liquidity-only scan — no LLM, no off-chain. ──────
+  if (mode === 'lp') {
+    if (!subjectAddress) return insufficient(sourceUrl, 'LP scan needs a token address to audit.', 'lp');
+    const lpChain = detectChain(subjectAddress);
+    const lpEvidence =
+      lpChain === 'solana'
+        ? await gatherEvidenceSolana(subjectAddress, 'lp')
+        : await gatherEvidence(subjectAddress, deps.cap);
+    const g = gate(lpEvidence, null, [], null);
+    const lpSubject = tickerFromEvidence(lpEvidence) ?? '$UNKNOWN';
+    log.info({ subject: lpSubject, chain: lpChain, verdict: g.verdict, mode: 'lp' }, 'lp scan stamped');
+    return {
+      mode: 'vibe_check',
+      scan_mode: 'lp',
+      subject: lpSubject,
+      subject_address: subjectAddress,
+      chain: lpChain,
+      source_url: sourceUrl,
+      claims_detected: [],
+      claim_checks: [],
+      onchain_findings: filterFindingsForMode(lpEvidence.onchainFindings, 'lp'),
+      deployer_findings: [],
+      offchain: null,
+      axes: g.axes,
+      verdict: g.verdict,
+      confidence: g.confidence,
+      caveats: g.caveats,
+    };
+  }
 
   // ── Intake: extract the ticker + the individually-checkable claims. ──────
   const classified = await classify({
@@ -62,6 +96,7 @@ export async function runPipeline(
   if (!subjectAddress) {
     return {
       mode: 'insufficient',
+      scan_mode: mode,
       subject: classified.ticker ?? '$UNKNOWN',
       subject_address: null,
       chain: 'base',
@@ -121,13 +156,14 @@ export async function runPipeline(
 
   return {
     mode: classified.mode,
+    scan_mode: mode,
     subject,
     subject_address: subjectAddress,
     chain,
     source_url: sourceUrl,
     claims_detected: classified.claims,
     claim_checks: claimChecks,
-    onchain_findings: evidence.onchainFindings,
+    onchain_findings: filterFindingsForMode(evidence.onchainFindings, mode),
     deployer_findings: evidence.deployerFindings,
     offchain,
     axes,
@@ -146,9 +182,11 @@ function tickerFromEvidence(evidence: { liquidity: { symbol: string | null } }):
 function insufficient(
   sourceUrl: string | null,
   caveats = 'No token address and no checkable claim were provided.',
+  scanMode: ScanMode = 'full',
 ): Analysis {
   return {
     mode: 'insufficient',
+    scan_mode: scanMode,
     subject: '$—',
     subject_address: null,
     chain: 'base',

@@ -15,6 +15,7 @@ export function receiptModelFromAnalysis(
     subject: analysis.subject,
     subjectAddress: analysis.subject_address,
     chain: analysis.chain,
+    scanMode: analysis.scan_mode,
     sourceUrl: analysis.source_url,
     isManual: !analysis.source_url,
     claims: analysis.claims_detected,

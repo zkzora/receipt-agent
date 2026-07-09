@@ -3,6 +3,15 @@ import { z } from 'zod';
 export const ModeSchema = z.enum(['claim_check', 'vibe_check', 'insufficient']);
 export type Mode = z.infer<typeof ModeSchema>;
 
+/**
+ * Which service tier produced this receipt (mapped from the CROO serviceId):
+ *   full  — flagship shill verify: 3-axis + claim fact-check, degen extras hidden
+ *   degen — full + degen-specific signals (dex paid / fees / dev sold / bundle)
+ *   lp    — lightweight liquidity-only scan (no LLM, no off-chain, no deep RPC)
+ */
+export const ScanModeSchema = z.enum(['full', 'degen', 'lp']);
+export type ScanMode = z.infer<typeof ScanModeSchema>;
+
 export const VerdictSchema = z.enum(['BASED', 'BULLSHIT', 'RED_FLAGS', 'MIXED', 'INSUFFICIENT']);
 export type Verdict = z.infer<typeof VerdictSchema>;
 
@@ -117,6 +126,8 @@ export type SubjectChain = z.infer<typeof SubjectChainSchema>;
 /** The CAP deliverable (SPEC §7). This is the contract the buyer receives. */
 export const OutputSchema = z.object({
   mode: ModeSchema,
+  /** Service tier that produced this receipt. Defaults to full for back-compat. */
+  scan_mode: ScanModeSchema.default('full'),
   subject: z.string(),
   subject_address: AddressOrNull(),
   chain: SubjectChainSchema,

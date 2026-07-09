@@ -4,9 +4,17 @@ import type {
   Confidence,
   OffchainSnapshot,
   OnchainFinding,
+  ScanMode,
   Verdict,
 } from '../schema/output.js';
 import { VERDICT_COLORS, VERDICT_LABELS } from '../schema/output.js';
+
+/** Header badge per scan tier. `full` (the flagship verify) prints no badge. */
+const SCAN_LABELS: Record<ScanMode, string> = {
+  full: '',
+  degen: 'DEGEN SCAN',
+  lp: 'LP SCAN',
+};
 import type { Attestation } from '../cap/types.js';
 
 /** Inner monospace width of the printed receipt body, in characters. */
@@ -16,6 +24,8 @@ export interface ReceiptModel {
   subject: string;
   addressLine: string;
   sourceLine: string;
+  /** Scan-tier badge for the header; empty for the flagship `full` verify. */
+  scanLabel: string;
   claims: string[];
   claimChecks: ClaimCheck[];
   reality: string[];
@@ -133,6 +143,8 @@ export interface BuildModelArgs {
    *  suffix. Defaults to 'base' so existing callers keep compiling/rendering
    *  identically without having to pass it. */
   chain?: 'base' | 'solana';
+  /** Scan tier — drives the header badge. Defaults to `full` (no badge). */
+  scanMode?: ScanMode;
   sourceUrl: string | null;
   isManual: boolean;
   claims: string[];
@@ -158,6 +170,7 @@ export function buildReceiptModel(a: BuildModelArgs): ReceiptModel {
   return {
     subject: a.subject,
     addressLine: `${shortAddr(a.subjectAddress)}${a.subjectAddress ? ` (${chainLabel})` : ''}`,
+    scanLabel: a.scanMode ? SCAN_LABELS[a.scanMode] : '',
     sourceLine: a.sourceUrl
       ? a.sourceUrl.replace(/^https?:\/\//, '').slice(0, WIDTH - 2)
       : a.isManual
@@ -188,6 +201,7 @@ export function modelToLines(m: ReceiptModel): string[] {
   lines.push(` SUBJECT : ${m.subject}`);
   lines.push(` ADDRESS : ${m.addressLine}`);
   lines.push(` SOURCE  : ${m.sourceLine}`);
+  if (m.scanLabel) lines.push(` SCAN    : ${m.scanLabel}`);
   lines.push(rule);
   if (m.claimChecks.length) {
     lines.push(' CLAIMS CHECKED');

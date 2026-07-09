@@ -6,8 +6,16 @@ import { registerProvider } from './cap/provider.js';
 import { runPipeline } from './engine/pipeline.js';
 import { receiptModelFromAnalysis } from './receipt/from-analysis.js';
 import { renderReceiptPng } from './receipt/render.js';
+import { ScanModeSchema, type ScanMode } from './schema/output.js';
 
 const log = logger.child({ mod: 'main' });
+
+/** Dev-only: let `?mode=degen|lp|full` override the scan tier for local testing.
+ *  In production the tier comes from the order's serviceId (see provider.ts). */
+function devScanMode(query: unknown): ScanMode | undefined {
+  const parsed = ScanModeSchema.safeParse((query as { mode?: unknown })?.mode);
+  return parsed.success ? parsed.data : undefined;
+}
 
 /**
  * Service entry point (M1 — "prove the pipe").
@@ -60,14 +68,14 @@ async function main(): Promise<void> {
     // the PNG renderer, so it works even where the native render deps are missing.
     app.post('/dev/analyze.json', async (request) => {
       const requirements = (request.body ?? {}) as Record<string, unknown>;
-      const analysis = await runPipeline(requirements, { cap });
+      const analysis = await runPipeline(requirements, { cap, mode: devScanMode(request.query) });
       const attestation = attestDeliverable({ ...analysis } as Record<string, unknown>);
       return { ...analysis, attestation };
     });
 
     app.post('/dev/analyze', async (request, reply) => {
       const requirements = (request.body ?? {}) as Record<string, unknown>;
-      const analysis = await runPipeline(requirements, { cap });
+      const analysis = await runPipeline(requirements, { cap, mode: devScanMode(request.query) });
       const attestation = attestDeliverable({ ...analysis } as Record<string, unknown>);
       const model = receiptModelFromAnalysis(analysis, attestation);
       const png = await renderReceiptPng(model);

@@ -28,6 +28,10 @@ const EnvSchema = z.object({
   /** CROO backend endpoints — the @croo-network/sdk AgentClient targets these. */
   CROO_API_URL: z.string().url().default('https://api.croo.network'),
   CROO_WS_URL: z.string().default('wss://api.croo.network/ws'),
+  /** Per-tier serviceIds. An order's serviceId selects the scan mode; anything
+   *  not matching these two runs the flagship `full` verify. Blank = disabled. */
+  CROO_SERVICE_ID_DEGEN: z.string().optional().default(''),
+  CROO_SERVICE_ID_LP: z.string().optional().default(''),
   AGENT_WALLET_ADDRESS: z.string().optional().default(''),
   AGENT_WALLET_PRIVATE_KEY: z.string().optional().default(''),
   SERVICE_PRICE_USDC: z.coerce.number().positive().default(0.5),
@@ -98,6 +102,8 @@ export const config = {
     sdkKey: env.CROO_SDK_KEY,
     apiUrl: env.CROO_API_URL,
     wsUrl: env.CROO_WS_URL,
+    degenServiceId: env.CROO_SERVICE_ID_DEGEN,
+    lpServiceId: env.CROO_SERVICE_ID_LP,
     walletAddress: env.AGENT_WALLET_ADDRESS,
     walletPrivateKey: env.AGENT_WALLET_PRIVATE_KEY,
     priceUsdc: env.SERVICE_PRICE_USDC,

@@ -4,6 +4,7 @@ import { attestDeliverable } from './client.js';
 import { parseInput } from '../schema/input.js';
 import { OutputSchema, type ReceiptOutput } from '../schema/output.js';
 import { runPipeline } from '../engine/pipeline.js';
+import { scanModeForService } from '../engine/scan-mode.js';
 import { receiptModelFromAnalysis } from '../receipt/from-analysis.js';
 import { renderReceiptPng } from '../receipt/render.js';
 
@@ -36,11 +37,13 @@ export function registerProvider(cap: CapClient): void {
 
   cap.onOrderPaid(async (order: PaidOrder) => {
     const t0 = Date.now();
-    const reqLog = log.child({ orderId: order.orderId });
+    const mode = scanModeForService(order.serviceId);
+    const reqLog = log.child({ orderId: order.orderId, serviceId: order.serviceId, mode });
     try {
       reqLog.info('order_paid → running pipeline');
       // Pass the CAP client so the engine can compose sub-agents (A2A) when live.
-      const analysis = await runPipeline(order.requirements, { cap });
+      // `mode` (from the serviceId) selects the scan tier: full / degen / lp.
+      const analysis = await runPipeline(order.requirements, { cap, mode });
 
       // Build the printed model first WITHOUT the attestation hash, render, upload,
       // then deliver — the attestation is computed inside deliverOrder over the
