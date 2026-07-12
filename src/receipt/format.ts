@@ -26,6 +26,8 @@ export interface ReceiptModel {
   sourceLine: string;
   /** Scan-tier badge for the header; empty for the flagship `full` verify. */
   scanLabel: string;
+  /** One-line project narrative (from off-chain sources); empty when none. */
+  narrative: string;
   claims: string[];
   claimChecks: ClaimCheck[];
   reality: string[];
@@ -145,6 +147,8 @@ export interface BuildModelArgs {
   chain?: 'base' | 'solana';
   /** Scan tier — drives the header badge. Defaults to `full` (no badge). */
   scanMode?: ScanMode;
+  /** Project narrative read from its own pages; shown as a NARRATIVE block. */
+  narrative?: string | null;
   sourceUrl: string | null;
   isManual: boolean;
   claims: string[];
@@ -171,6 +175,7 @@ export function buildReceiptModel(a: BuildModelArgs): ReceiptModel {
     subject: a.subject,
     addressLine: `${shortAddr(a.subjectAddress)}${a.subjectAddress ? ` (${chainLabel})` : ''}`,
     scanLabel: a.scanMode ? SCAN_LABELS[a.scanMode] : '',
+    narrative: a.narrative ?? '',
     sourceLine: a.sourceUrl
       ? a.sourceUrl.replace(/^https?:\/\//, '').slice(0, WIDTH - 2)
       : a.isManual
@@ -203,6 +208,11 @@ export function modelToLines(m: ReceiptModel): string[] {
   lines.push(` SOURCE  : ${m.sourceLine}`);
   if (m.scanLabel) lines.push(` SCAN    : ${m.scanLabel}`);
   lines.push(rule);
+  if (m.narrative) {
+    lines.push(' NARRATIVE');
+    for (const l of wrapAt(m.narrative, WIDTH - 3)) lines.push(`  ${l}`);
+    lines.push(rule);
+  }
   if (m.claimChecks.length) {
     lines.push(' CLAIMS CHECKED');
     for (const c of m.claimChecks) lines.push(...claimCheckLines(c));

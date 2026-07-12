@@ -107,6 +107,9 @@ export const OffchainSnapshotSchema = z.object({
   /** URLs deliberately not fetched (X/Twitter) — kept as references. */
   skipped: z.array(z.string()),
   assessments: z.array(OffchainAssessmentSchema),
+  /** One-sentence summary of what the project claims to be, read from its OWN
+   *  pages — descriptive context, not a verdict. Null when no source said. */
+  narrative: z.string().nullable().default(null),
 });
 export type OffchainSnapshot = z.infer<typeof OffchainSnapshotSchema>;
 

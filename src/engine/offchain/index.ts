@@ -2,6 +2,7 @@ import { config } from '../../config.js';
 import { logger } from '../../logger.js';
 import type { OffchainSnapshot, OffchainSource } from '../../schema/output.js';
 import { assessClaims } from './assess.js';
+import { summarizeNarrative } from './narrative.js';
 import { classifyUrl, fetchReadable, harvestUrls, isTwitterUrl, webSearch } from './web.js';
 
 const log = logger.child({ mod: 'offchain' });
@@ -94,8 +95,13 @@ export async function gatherOffchain(input: OffchainInput): Promise<OffchainSnap
     };
   });
 
-  // 5. Verify claims against what we actually read.
-  const assessments = await assessClaims(input.subject, input.address, input.claims, sources);
+  // 5. In parallel: verify provided claims, AND summarise the project's own
+  //    narrative (runs even with zero claims — an address-only scan still gets
+  //    "what this token says it is"). Both read the full excerpts before truncation.
+  const [assessments, narrative] = await Promise.all([
+    assessClaims(input.subject, input.address, input.claims, sources),
+    summarizeNarrative(input.subject, input.address, sources),
+  ]);
 
   // Drop the bulky full text from non-assessable rows but keep a short excerpt
   // for the receipt's provenance trail.
@@ -117,6 +123,7 @@ export async function gatherOffchain(input: OffchainInput): Promise<OffchainSnap
     sources,
     skipped,
     assessments,
+    narrative,
   };
 
   log.info(
@@ -129,6 +136,7 @@ export async function gatherOffchain(input: OffchainInput): Promise<OffchainSnap
       fetched: sources.filter((s) => s.fetched).length,
       skipped: skipped.length,
       assessed: assessments.length,
+      narrative: narrative != null,
     },
     'off-chain pass complete',
   );

@@ -39,6 +39,7 @@ async function main() {
       ],
       skipped: ['https://x.com/lunar/status/123'],
       assessments: [],
+      narrative: 'Claims to be an audited, tier-1-backed DeFi protocol.',
     },
     axes: [
       { axis: 'SAFETY', status: 'FAIL', detail: 'sell tax 35%' },
