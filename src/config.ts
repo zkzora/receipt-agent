@@ -65,6 +65,11 @@ const EnvSchema = z.object({
   SEARCH_PROVIDER: z.enum(['none', 'brave', 'serper']).default('none'),
   SEARCH_API_KEY: z.string().optional().default(''),
 
+  // Public scan endpoint (website → agent). CORS origin: set to your web domain
+  // in production (e.g. https://receipt.pages.dev); '*' is fine for local dev.
+  WEB_ORIGIN: z.string().default('*'),
+  SCAN_RATE_PER_HOUR: z.coerce.number().int().positive().default(30),
+
   // Runtime
   PORT: z.coerce.number().int().positive().default(8787),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -134,6 +139,10 @@ export const config = {
     fetchTimeoutMs: 8_000,
     maxBytes: 512 * 1024,
     maxChars: 4_000,
+  },
+  web: {
+    origin: env.WEB_ORIGIN,
+    scanRatePerHour: env.SCAN_RATE_PER_HOUR,
   },
   runtime: {
     port: env.PORT,

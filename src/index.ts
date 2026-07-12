@@ -39,7 +39,18 @@ async function main(): Promise<void> {
   const cap = createCapClient();
   registerProvider(cap);
 
-  const app = Fastify({ logger: false });
+  // trustProxy so `request.ip` reflects the real client behind Caddy/nginx.
+  const app = Fastify({ logger: false, trustProxy: true });
+
+  // ── CORS (browser → agent). Preflight short-circuits here. ────────────────
+  app.addHook('onRequest', async (req, reply) => {
+    reply.header('access-control-allow-origin', config.web.origin);
+    reply.header('vary', 'Origin');
+    reply.header('access-control-allow-methods', 'GET,POST,OPTIONS');
+    reply.header('access-control-allow-headers', 'content-type');
+    reply.header('access-control-max-age', '86400');
+    if (req.method === 'OPTIONS') return reply.code(204).send();
+  });
 
   // ── Liveness / readiness ──────────────────────────────────────────────────
   app.get('/health', async () => ({
@@ -58,6 +69,38 @@ async function main(): Promise<void> {
     priceUsdc: config.cap.priceUsdc,
     slaSeconds: config.cap.slaSeconds,
   }));
+
+  // ── Public scan endpoint (website → agent). ───────────────────────────────
+  // Free + per-IP rate-limited for now; 0.1 USDC payment gating is the next step
+  // (verify a payment tx before running). Works in mock AND live mode.
+  const scanHits = new Map<string, number[]>();
+  app.post('/scan', async (request, reply) => {
+    const ip = request.ip;
+    const now = Date.now();
+    const recent = (scanHits.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+    if (recent.length >= config.web.scanRatePerHour) {
+      return reply.code(429).send({ error: 'rate_limited', retry_after_sec: 3600 });
+    }
+
+    const body = (request.body ?? {}) as { input?: unknown; mode?: unknown };
+    const input = typeof body.input === 'string' ? body.input.trim() : '';
+    if (!input) return reply.code(400).send({ error: 'missing_input' });
+    const parsedMode = ScanModeSchema.safeParse(body.mode);
+    const mode: ScanMode = parsedMode.success ? parsedMode.data : 'full';
+
+    recent.push(now);
+    scanHits.set(ip, recent);
+
+    try {
+      const analysis = await runPipeline({ text: input }, { cap, mode });
+      const attestation = attestDeliverable({ ...analysis } as Record<string, unknown>);
+      log.info({ mode, verdict: analysis.verdict }, 'scan delivered');
+      return { ...analysis, attestation };
+    } catch (err) {
+      log.error({ err, mode }, 'scan failed');
+      return reply.code(500).send({ error: 'scan_failed' });
+    }
+  });
 
   // ── Dev-only: run the pipeline on demand and stream back the receipt PNG ──
   // Lets you exercise the manual / vibe / insufficient paths without waiting for
