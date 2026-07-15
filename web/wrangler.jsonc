@@ -1,0 +1,10 @@
+{
+  // Cloudflare Workers static-assets config for the RECEIPT website.
+  // Build (`npm run build`) emits ./dist; Wrangler serves it as a static SPA.
+  "name": "receipt-agent",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
