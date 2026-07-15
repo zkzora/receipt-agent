@@ -72,6 +72,12 @@ export interface Attestation {
   chain: string;
 }
 
+export type SocialKind = 'x' | 'telegram' | 'discord' | 'github' | 'website';
+export interface SocialLink {
+  kind: SocialKind;
+  url: string;
+}
+
 export interface Analysis {
   mode: 'claim_check' | 'vibe_check' | 'insufficient';
   scan_mode: ScanMode;
@@ -79,6 +85,7 @@ export interface Analysis {
   subject_address: string | null;
   chain: SubjectChain;
   source_url: string | null;
+  socials: SocialLink[];
   claims_detected: string[];
   claim_checks: ClaimCheck[];
   onchain_findings: OnchainFinding[];

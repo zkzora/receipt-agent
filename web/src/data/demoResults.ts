@@ -13,6 +13,11 @@ export const DEMO_RESULTS: Record<string, Analysis> = {
     subject_address: '9nEqaUcb16sQ3Tn1psbkWqyhPdLmfHWjKGymREjsAgpump',
     chain: 'solana',
     source_url: null,
+    socials: [
+      { kind: 'x', url: 'https://x.com/dogwifcoin' },
+      { kind: 'telegram', url: 'https://t.me/dogwifcoin' },
+      { kind: 'website', url: 'https://wifsol.xyz' },
+    ],
     claims_detected: [],
     claim_checks: [],
     onchain_findings: [
@@ -66,6 +71,7 @@ export const DEMO_RESULTS: Record<string, Analysis> = {
     subject_address: 'BhV5s2mQ8yKfN3xR7wZ1dP4uT6cA9eLmY2nH8jXvQpump',
     chain: 'solana',
     source_url: null,
+    socials: [],
     claims_detected: [],
     claim_checks: [],
     onchain_findings: [
@@ -100,6 +106,10 @@ export const DEMO_RESULTS: Record<string, Analysis> = {
     subject_address: '0x9f2a000000000000000000000000000000000c81',
     chain: 'base',
     source_url: 'https://x.com/someshiller/status/123',
+    socials: [
+      { kind: 'x', url: 'https://x.com/lunar' },
+      { kind: 'website', url: 'https://lunar.example' },
+    ],
     claims_detected: ['fully audited', '10M TVL', 'LP locked'],
     claim_checks: [
       { claim: 'fully audited', status: 'FALSE', note: 'contract is unverified' },

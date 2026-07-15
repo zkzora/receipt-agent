@@ -19,6 +19,14 @@ const DOT: Record<FindingStatus, string> = {
   unavailable: '#6b7280',
 };
 
+const SOCIAL_LABEL: Record<string, string> = {
+  x: 'X',
+  telegram: 'Telegram',
+  discord: 'Discord',
+  github: 'GitHub',
+  website: 'Website',
+};
+
 /** Evidence groups, in display order. A finding lands in the first group whose
  *  metric list contains it; anything unmatched falls to "Other". */
 const GROUPS: { key: string; label: string; metrics: string[] }[] = [
@@ -133,6 +141,20 @@ export function ScanResult({ result }: { result: Analysis }) {
           ))}
         </div>
       </header>
+
+      {/* ── Socials from the CA ─────────────────────────────────── */}
+      {result.socials.length > 0 && (
+        <div className="sr-socials">
+          <span className="sr-socials-tag">SOCIALS</span>
+          <div className="sr-socials-list">
+            {result.socials.map((s, i) => (
+              <a className="sr-social" key={i} href={s.url} target="_blank" rel="noreferrer">
+                {SOCIAL_LABEL[s.kind] ?? s.kind} ↗
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Narrative (what the project says it is) ─────────────── */}
       {result.offchain?.narrative && (

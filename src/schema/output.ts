@@ -126,6 +126,14 @@ export type AttestationOut = z.infer<typeof AttestationSchema>;
 export const SubjectChainSchema = z.enum(['base', 'solana']);
 export type SubjectChain = z.infer<typeof SubjectChainSchema>;
 
+/** A project social/link surfaced from the token's on-chain-adjacent metadata
+ *  (DexScreener-registered websites/socials) — degen shortcut to the CA's pages. */
+export const SocialLinkSchema = z.object({
+  kind: z.enum(['x', 'telegram', 'discord', 'github', 'website']),
+  url: z.string(),
+});
+export type SocialLink = z.infer<typeof SocialLinkSchema>;
+
 /** The CAP deliverable (SPEC §7). This is the contract the buyer receives. */
 export const OutputSchema = z.object({
   mode: ModeSchema,
@@ -135,6 +143,8 @@ export const OutputSchema = z.object({
   subject_address: AddressOrNull(),
   chain: SubjectChainSchema,
   source_url: z.string().nullable(),
+  /** Project socials (X / Telegram / Discord / site) resolved from the CA. */
+  socials: z.array(SocialLinkSchema).default([]),
   claims_detected: z.array(z.string()),
   claim_checks: z.array(ClaimCheckSchema),
   onchain_findings: z.array(OnchainFindingSchema),

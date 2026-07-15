@@ -86,6 +86,14 @@ export async function solanaDeployerCheck(
   }
 
   const onchainFindings: OnchainFinding[] = [];
+  if (holding != null) {
+    onchainFindings.push({
+      metric: 'creator holds',
+      value: `${holding.pct.toFixed(1)}%`,
+      source: 'solana-rpc',
+      status: holding.pct > 5 ? 'flag' : 'ok',
+    });
+  }
   if (sold != null) {
     onchainFindings.push({
       metric: 'dev sold',

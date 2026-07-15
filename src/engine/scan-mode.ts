@@ -21,6 +21,7 @@ export const DEGEN_METRICS: ReadonlySet<string> = new Set([
   'dex paid',
   'trading fees (24h)',
   'dev sold',
+  'creator holds',
   'launch-slot wallets (heuristic)',
 ]);
 

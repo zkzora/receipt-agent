@@ -9,6 +9,7 @@ import { gatherOffchain } from './offchain/index.js';
 import { judge } from './judge.js';
 import { gate } from './gating.js';
 import { filterFindingsForMode } from './scan-mode.js';
+import { extractSocials } from './socials.js';
 
 const log = logger.child({ mod: 'engine' });
 
@@ -72,6 +73,7 @@ export async function runPipeline(
       subject_address: subjectAddress,
       chain: lpChain,
       source_url: sourceUrl,
+      socials: extractSocials(lpEvidence.liquidity.links),
       claims_detected: [],
       claim_checks: [],
       onchain_findings: filterFindingsForMode(lpEvidence.onchainFindings, 'lp'),
@@ -101,6 +103,7 @@ export async function runPipeline(
       subject_address: null,
       chain: 'base',
       source_url: sourceUrl,
+      socials: [],
       claims_detected: classified.claims,
       claim_checks: [],
       onchain_findings: [],
@@ -161,6 +164,7 @@ export async function runPipeline(
     subject_address: subjectAddress,
     chain,
     source_url: sourceUrl,
+    socials: extractSocials(evidence.liquidity.links),
     claims_detected: classified.claims,
     claim_checks: claimChecks,
     onchain_findings: filterFindingsForMode(evidence.onchainFindings, mode),
@@ -191,6 +195,7 @@ function insufficient(
     subject_address: null,
     chain: 'base',
     source_url: sourceUrl,
+    socials: [],
     claims_detected: [],
     claim_checks: [],
     onchain_findings: [],
