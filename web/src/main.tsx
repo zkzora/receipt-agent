@@ -6,9 +6,11 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 import { App } from './App.tsx';
 import './index.css';
 
-/** RPC the browser uses to build + confirm the payment tx. Public mainnet by
- *  default; override with VITE_SOLANA_RPC (e.g. an Alchemy endpoint). */
-const RPC = (import.meta.env.VITE_SOLANA_RPC as string | undefined) ?? 'https://api.mainnet-beta.solana.com';
+/** RPC the browser uses to build + confirm the payment tx.
+ *  The public `api.mainnet-beta.solana.com` blocks browser calls with 403, so we
+ *  default to a keyless CORS-friendly endpoint. For production reliability set
+ *  VITE_SOLANA_RPC to your own (Helius/Alchemy/QuickNode) in Cloudflare env. */
+const RPC = (import.meta.env.VITE_SOLANA_RPC as string | undefined) ?? 'https://solana-rpc.publicnode.com';
 
 function Root() {
   // Empty wallet list → the Solana Wallet Standard auto-detects installed wallets
