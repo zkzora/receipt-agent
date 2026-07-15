@@ -1,180 +1,235 @@
-# RECEIPT — Go-Live Runbook
+# RECEIPT — Deploy Guide (agent → VPS → website → payment)
 
-How to take RECEIPT public: the **agent** (backend) runs on a VPS as a paid CROO
-CAP provider that settles in USDC, and the **website** is a static marketing
-showcase on Cloudflare Pages that funnels buyers to the CROO listing.
+End-to-end setup: run the **agent** on a VPS, expose it over HTTPS, deploy the
+**website** (`web/`) to Cloudflare Pages so people can scan a token directly, and
+(planned) charge **0.1 USDC per scan**.
 
 ```
-PAID (USDC)  CROO Store / OpenClaw / other agents ──order_paid──▶ ┌────────────────────────┐
-                                                                  │ RECEIPT agent (VPS)    │ CAP_MODE=live
-                                                                  │ @croo-network/sdk      │ deliver → CROO
-FUNNEL       Website (Cloudflare Pages, static) ──CTA buttons────▶│  auto-settles USDC     │
-              "Verify on CROO →"                                  └────────────────────────┘
+Browser (website on Cloudflare Pages, HTTPS)
+        │  POST /scan { input, mode }
+        ▼
+https://api.yourdomain.com     ← Caddy (auto-HTTPS reverse proxy)
+        │
+        ▼
+localhost:8787                 ← the agent (Node/tsx, kept alive by pm2)
+        │
+        ▼
+pipeline → JSON verdict (+ PNG receipt)
 ```
 
-> **Where USDC actually changes hands:** the website never charges. A buyer pays
-> USDC into CROO's escrow (CAPVault) when they pay an order; once the agent
-> delivers and delivery is confirmed on-chain, CAPVault auto-distributes
-> (platform fee → treasury, remainder → your provider AA wallet). The agent must
-> be **online in live mode** to receive `order_paid` and deliver within the SLA.
+Two things ship: **the agent** (this repo, on a VPS) and **the website** (`web/`
+in this repo, on Cloudflare Pages). The glue is a domain + HTTPS so the browser
+can reach the agent.
 
 ---
 
-## 0. Prerequisites
+## Part 1 — Run the agent on the VPS
 
-- A **CROO account** + agent registered at https://agent.croo.network (you already
-  have an SDK key: `croo_sk_…`). Keep it secret — it is shown only once.
-- **OpenRouter** API key (LLM) — `OPENAI_API_KEY`.
-- Recommended data keys: **GoPlus** (`GOPLUS_APP_KEY/SECRET`), **Basescan**
-  (`BASESCAN_API_KEY`). Optional: **Serper/Brave** (`SEARCH_API_KEY`).
-- A **VPS** (1–2 vCPU, 1–2 GB RAM is plenty) with Docker, e.g. Hetzner / DigitalOcean / Fly.
-- A **Cloudflare account** + a domain (for the website + custom domain).
-
----
-
-## 1. CROO dashboard — finish the service (Step 1 on your Configure Agent screen)
-
-In the CROO dashboard, complete the agent profile and **add one service**:
-
-| Field          | Value                                                                 |
-| -------------- | --------------------------------------------------------------------- |
-| Service name   | e.g. `RECEIPT — on-chain shill fact-check`                            |
-| Price (USDC)   | e.g. `0.50` — must equal `SERVICE_PRICE_USDC` in `.env`               |
-| SLA            | e.g. `300s` — must be `>=` `SERVICE_SLA_SECONDS` and `> PIPELINE_BUDGET_MS` |
-| Deliverable    | **Text** (we deliver the canonical receipt JSON as text)              |
-| Requirements   | JSON: `{ "x_url"?, "claim"?, "subject_address"?, "chain"? }`          |
-| Description    | What it does + that output is the 3-axis receipt + attestation hash   |
-
-You do **not** start the provider from the dashboard — our own service is the
-provider (Step 3 below replaces `npx ts-node examples/provider.ts`).
-
----
-
-## 2. Backend on the VPS (Docker)
+**Prereqs (Ubuntu):** Node 20+ and git.
 
 ```bash
-# on the VPS
-git clone <your repo> receipt && cd receipt
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs git
+
+git clone https://github.com/zkzora/receipt-agent.git
+cd receipt-agent
+corepack pnpm install
+```
+
+> `bigint-buffer` may warn on native build and fall back to a JS version — fine.
+
+**Configure `.env`:**
+
+```bash
 cp .env.example .env
-nano .env            # fill the [LIVE] values, see below
+nano .env
 ```
 
-Minimum `.env` for live (see `.env.example` for the full list):
+Minimum for a good website scan:
 
-```ini
-CAP_MODE=live
-CROO_SDK_KEY=croo_sk_********
-CROO_API_URL=https://api.croo.network
-CROO_WS_URL=wss://api.croo.network/ws
-OPENAI_API_KEY=sk-or-********
-LLM_MODEL=anthropic/claude-haiku-4.5
-GOPLUS_APP_KEY=...
-GOPLUS_APP_SECRET=...
-BASESCAN_API_KEY=...
-SERVICE_PRICE_USDC=0.5          # == dashboard price
-SERVICE_SLA_SECONDS=300         # <= dashboard SLA
-PIPELINE_BUDGET_MS=240000       # < SLA, so we always deliver in time
-# optional paid web search (DexScreener discovery works without it):
-# SEARCH_PROVIDER=serper
-# SEARCH_API_KEY=...
-```
+| Var | What | Where |
+|---|---|---|
+| `OPENAI_API_KEY` | LLM for classify/judge + narrative | OpenRouter key (`OPENAI_API_BASE` is already OpenRouter) |
+| `SOLANA_RPC_URL` | Solana reads (holders, dev-sold, bundle) | **Alchemy** — public RPC gets rate-limited |
+| `WEB_ORIGIN` | CORS allow-list | your web domain (or `*` while testing) |
+| `CAP_MODE` | `mock` is fine for the website | leave `mock` unless wiring live CROO |
+| `BASESCAN_API_KEY`, `GOPLUS_APP_KEY/SECRET` | Base-chain evidence | optional (Base tokens only) |
 
-Build + run:
+The verdict runs even without the LLM key (deterministic, no narrative), but set
+`OPENAI_API_KEY` + a paid `SOLANA_RPC_URL` for the full experience.
+
+**Run with pm2:**
 
 ```bash
-docker compose up -d --build
-docker compose logs -f          # watch it connect
+sudo npm install -g pm2
+pm2 start "corepack pnpm start" --name receipt-agent
+pm2 save
+pm2 startup     # run the printed command to enable boot-start
 ```
 
-Expected log lines:
+> One instance only (fork mode) — the agent is stateful.
 
-```
-receipt-agent listening            (port 8787, mode live)
-CAP live (CROO) connected — listening for negotiations + paid orders
-```
-
-The agent should now flip to **Online** in the CROO dashboard. Health check:
-`curl http://localhost:8787/health` → `{"ok":true,"capMode":"live",...}`.
-
-> The container restarts on crash (`restart: unless-stopped`) and has a Docker
-> healthcheck on `/health`. `/health` is the only public HTTP surface in live
-> mode — there is **no** analyze endpoint exposed (orders arrive over the CROO
-> WebSocket), so nothing to rate-limit or abuse.
-
-### Notes
-
-- **Secrets**: `.env` is git-ignored and excluded from the image (`.dockerignore`)
-  — it is injected at runtime via `env_file`. Never bake it into the image.
-- **Time budget**: keep `PIPELINE_BUDGET_MS` < your SLA. A check is typically
-  5–10s (on-chain + off-chain + LLM); 300s SLA is very safe.
-- **Updating**: `git pull && docker compose up -d --build`.
-
----
-
-## 3. Website on Cloudflare Pages (static showcase)
-
-The site is a pure static Vite build — **no API, no inputs** (anti-abuse by
-design). All CTAs link to your CROO listing.
-
-**Option A — Cloudflare dashboard (Git integration):**
-
-| Setting             | Value                          |
-| ------------------- | ------------------------------ |
-| Framework preset    | Vite                           |
-| Root directory      | `web`                          |
-| Build command       | `npm install -g pnpm && pnpm install && pnpm build` |
-| Build output dir    | `web/dist`                     |
-| Env var             | `VITE_CROO_URL` = your CROO listing URL |
-
-> Pages runs the build from the repo root; set **Root directory = `web`** so it
-> builds the website workspace. If your Pages build can't run the monorepo
-> install, use Option B (prebuilt upload) instead.
-
-**Option B — Wrangler (prebuilt upload, simplest for a pnpm monorepo):**
+**Verify on the VPS:**
 
 ```bash
-# locally / in CI
-VITE_CROO_URL="https://<your-croo-listing-url>" pnpm web:build
-npx wrangler pages deploy web/dist --project-name receipt
+curl localhost:8787/health
+curl -X POST localhost:8787/scan -H "content-type: application/json" \
+  -d '{"input":"DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263","mode":"lp"}'
 ```
 
-Then add your custom domain in **Cloudflare Pages → Custom domains**.
+---
 
-`VITE_CROO_URL` sets every CTA button + nav/footer link. If unset it defaults to
-`https://agent.croo.network` — point it at your published service listing.
+## Part 2 — Expose over HTTPS (domain + Caddy)
+
+The website is HTTPS, so it **cannot** call `http://your-ip:8787` (mixed content).
+Put Caddy in front — it gets Let's Encrypt certs automatically.
+
+**1. DNS:** `A` record `api.yourdomain.com` → your VPS IP.
+
+**2. Install Caddy:**
+
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+```
+
+**3.** `/etc/caddy/Caddyfile`:
+
+```
+api.yourdomain.com {
+    reverse_proxy localhost:8787
+}
+```
+
+**4.**
+
+```bash
+sudo systemctl reload caddy
+sudo ufw allow 80,443/tcp        # if using ufw
+curl https://api.yourdomain.com/health   # HTTPS works now
+```
 
 ---
 
-## 4. End-to-end verification (real USDC)
+## Part 3 — Lock down CORS
 
-1. Open your CROO listing (or use OpenClaw/Hermes to chat your agent).
-2. Place a paid order with a real payload, e.g.
-   `{ "subject_address": "0x980e…fba3", "claim": "fully audited, LP locked, renounced" }`.
-3. Pay the USDC. Watch the agent logs:
-   ```
-   order_paid → running pipeline
-   delivered order (CROO) — USDC settles to provider AA wallet on confirmation
-   ```
-4. The buyer gets the receipt (text JSON + uploaded PNG object key + attestation
-   hash). Settlement lands in your provider AA wallet after delivery confirmation.
+`WEB_ORIGIN=*` is fine for testing. For production set it to your exact web origin:
 
-If a delivery fails, the agent logs the error and does **not** crash; the order
-times out per CROO's SLA and is not settled.
+```bash
+# .env on the VPS
+WEB_ORIGIN=https://receipt-agent.pages.dev
+```
+
+```bash
+pm2 restart receipt-agent
+```
 
 ---
 
-## 5. Operations
+## Part 4 — Deploy the website to Cloudflare Pages
 
-- **Logs**: `docker compose logs -f receipt-agent` (JSON pino lines).
-- **Restart**: `docker compose restart receipt-agent`.
-- **Pretty logs** locally: set `DEV_PRETTY_LOGS=1`.
-- **Rollback**: `git checkout <prev>` then rebuild.
-- Keep the VPS clock synced (NTP) — SLA deadlines are time-sensitive.
+The website lives in `web/` **in this repo**, so Pages can build straight from git.
 
-## 6. Security
+**Cloudflare dashboard → Workers & Pages → Create → Pages → Connect to Git →
+pick `zkzora/receipt-agent`.** Then set:
 
-- Only `/health` is exposed; bind the VPS firewall so 8787 is internal or behind
-  a reverse proxy if you want TLS on it (not required — CROO talks to you over an
-  outbound WebSocket, so no inbound port is strictly needed beyond your own ops).
-- Rotate `CROO_SDK_KEY` from the dashboard if leaked.
-- The website is static and calls nothing — no CORS, no keys shipped to the browser.
+| Setting | Value |
+|---|---|
+| Production branch | `master` |
+| Root directory (Advanced) | `web` |
+| Framework preset | Vite |
+| Build command | `npm install && npm run build` |
+| Build output directory | `dist` |
+
+**Environment variables** (Pages → Settings → Environment variables):
+
+| Var | Value |
+|---|---|
+| `VITE_API_URL` | `https://api.yourdomain.com` (your agent) |
+| `VITE_CROO_URL` | your CROO listing URL (optional) |
+
+`VITE_API_URL` is what points the Scan button at your VPS agent. Without it the
+site falls back to `http://localhost:8787` (local dev only).
+
+**Deploy → open the site → `#scan` → paste a Solana mint → Scan.** You should get a
+live verdict from the VPS (not the demo). Every `git push` auto-redeploys.
+
+> **OG image:** in `web/index.html`, once you have the final domain, change
+> `og:image` / `twitter:image` from `/receipt-logo.png` to
+> `https://yourdomain.com/receipt-logo.png` so link previews render on X/Discord.
+
+### Local build check (optional, before deploying)
+
+```bash
+npm run build --prefix web   # tsc + vite build → web/dist
+npm run preview --prefix web # serve the production build locally
+```
+
+---
+
+## Part 5 — Payment: 0.1 USDC per scan  *(planned — not wired yet)*
+
+`/scan` is currently **free + rate-limited** (`SCAN_RATE_PER_HOUR`, default 30/IP).
+The paid flow:
+
+```
+1. User connects Phantom on the website.
+2. On Scan: website sends 0.1 USDC (SPL) to your receiving wallet → gets a tx signature.
+3. Website calls POST /scan { input, mode, paymentTx }.
+4. Agent verifies the tx on-chain (amount, wallet, not already used) → runs the pipeline.
+   One payment = one scan (anti-replay store).
+```
+
+**To enable, we build:**
+- Frontend: Phantom wallet-adapter + the 0.1 USDC transfer, then send `paymentTx`.
+- Backend: `/scan` verifies the payment before running + an anti-replay store
+  (`node:sqlite`) of used tx signatures.
+- New config: `RECEIVE_WALLET` (your Solana address) + `PRICE_USDC=0.1`.
+
+Pay in **USDC on Solana** (audience has Phantom, no bridge). No Privy needed for
+launch — plain wallet-adapter is enough.
+
+> **Next step:** give a dedicated **Solana receiving wallet address**, and this
+> section gets implemented.
+
+---
+
+## Updating (after any push)
+
+```bash
+cd receipt-agent
+git pull
+corepack pnpm install     # only if deps changed
+pm2 restart receipt-agent
+```
+
+The website redeploys automatically on push (Pages ↔ git).
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Browser **CORS error** | Set `WEB_ORIGIN` to your web origin (or `*`), `pm2 restart`. |
+| Browser **mixed content / blocked** | Agent must be HTTPS — finish Part 2 (Caddy). |
+| Scan says **"can't reach the agent"** | Check `VITE_API_URL` + `curl https://api.yourdomain.com/health`. |
+| Solana findings **"unavailable"** | Public RPC rate-limited — set a paid `SOLANA_RPC_URL` (Alchemy). |
+| **429 rate_limited** | Free-tier cap; raise `SCAN_RATE_PER_HOUR` or add payment. |
+| `EADDRINUSE :8787` | A stray instance is running — `pm2 list`, kill it. |
+| No **narrative** in results | Needs `OPENAI_API_KEY` + the token must have fetchable public pages. |
+| Pages **build fails** | Confirm Root dir = `web`, build = `npm install && npm run build`, output = `dist`. |
+
+---
+
+## Quick reference
+
+| Thing | Value |
+|---|---|
+| Agent port | `8787` |
+| Health | `GET /health` |
+| Scan | `POST /scan { "input": "<CA or claim>", "mode": "full\|degen\|lp" }` |
+| Web dev | `npm run dev --prefix web` (→ `:5173`) |
+| Agent dev | `corepack pnpm dev` (watch) / `corepack pnpm start` |
