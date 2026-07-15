@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 /**
  * The verify console talks to the running receipt-agent (Fastify, default :8787).
@@ -10,7 +11,8 @@ import react from '@vitejs/plugin-react';
 const API_TARGET = process.env.VITE_API_TARGET ?? 'http://localhost:8787';
 
 export default defineConfig({
-  plugins: [react()],
+  // nodePolyfills provides Buffer/process/global that @solana/web3.js expects.
+  plugins: [react(), nodePolyfills({ globals: { Buffer: true, global: true, process: true } })],
   server: {
     port: 5173,
     proxy: {

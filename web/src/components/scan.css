@@ -51,6 +51,36 @@
   font-size: 15px;
 }
 
+/* ── top row: eyebrow + wallet connect ─────────────────────── */
+.scan-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.scan-top .scan-eyebrow {
+  margin-bottom: 0;
+}
+/* Retheme the wallet-adapter button to the Solana gradient. */
+.scan-top .wallet-adapter-button {
+  background: var(--sol-grad);
+  color: #06060a;
+  height: auto;
+  line-height: 1.2;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 13px;
+}
+.scan-top .wallet-adapter-button:not([disabled]):hover {
+  background: var(--sol-grad);
+  filter: brightness(1.08);
+}
+.scan-top .wallet-adapter-button-start-icon { display: none; }
+
 /* ── Tier tabs (segmented) ─────────────────────────────────── */
 .scan-tabs {
   display: grid;
