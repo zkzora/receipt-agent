@@ -7,6 +7,8 @@ import { runPipeline } from './engine/pipeline.js';
 import { receiptModelFromAnalysis } from './receipt/from-analysis.js';
 import { renderReceiptPng } from './receipt/render.js';
 import { ScanModeSchema, type ScanMode } from './schema/output.js';
+import { verifyPayment } from './payment/verify.js';
+import { paymentStore } from './payment/store.js';
 
 const log = logger.child({ mod: 'main' });
 
@@ -68,6 +70,13 @@ async function main(): Promise<void> {
     capMode: config.cap.mode,
     priceUsdc: config.cap.priceUsdc,
     slaSeconds: config.cap.slaSeconds,
+    payment: config.payment.required
+      ? {
+          priceUsdc: config.payment.priceUsdc,
+          receiveWallet: config.payment.receiveWallet,
+          usdcMint: config.payment.usdcMint,
+        }
+      : null,
   }));
 
   // ── Public scan endpoint (website → agent). ───────────────────────────────
@@ -75,21 +84,37 @@ async function main(): Promise<void> {
   // (verify a payment tx before running). Works in mock AND live mode.
   const scanHits = new Map<string, number[]>();
   app.post('/scan', async (request, reply) => {
-    const ip = request.ip;
-    const now = Date.now();
-    const recent = (scanHits.get(ip) ?? []).filter((t) => now - t < 3_600_000);
-    if (recent.length >= config.web.scanRatePerHour) {
-      return reply.code(429).send({ error: 'rate_limited', retry_after_sec: 3600 });
-    }
-
-    const body = (request.body ?? {}) as { input?: unknown; mode?: unknown };
+    const body = (request.body ?? {}) as { input?: unknown; mode?: unknown; paymentTx?: unknown };
     const input = typeof body.input === 'string' ? body.input.trim() : '';
     if (!input) return reply.code(400).send({ error: 'missing_input' });
     const parsedMode = ScanModeSchema.safeParse(body.mode);
     const mode: ScanMode = parsedMode.success ? parsedMode.data : 'full';
 
-    recent.push(now);
-    scanHits.set(ip, recent);
+    // ── Gate: verified USDC payment when configured, else free + per-IP rate-limit ──
+    if (config.payment.required) {
+      const sig = typeof body.paymentTx === 'string' ? body.paymentTx.trim() : '';
+      if (!sig) {
+        return reply.code(402).send({
+          error: 'payment_required',
+          price_usdc: config.payment.priceUsdc,
+          receive_wallet: config.payment.receiveWallet,
+          usdc_mint: config.payment.usdcMint,
+        });
+      }
+      if (paymentStore().isUsed(sig)) return reply.code(402).send({ error: 'payment_already_used' });
+      const v = await verifyPayment(sig);
+      if (!v.ok) return reply.code(402).send({ error: 'payment_invalid', reason: v.reason });
+      paymentStore().markUsed(sig, v.payer, config.payment.priceUsdc);
+    } else {
+      const ip = request.ip;
+      const now = Date.now();
+      const recent = (scanHits.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+      if (recent.length >= config.web.scanRatePerHour) {
+        return reply.code(429).send({ error: 'rate_limited', retry_after_sec: 3600 });
+      }
+      recent.push(now);
+      scanHits.set(ip, recent);
+    }
 
     try {
       const analysis = await runPipeline({ text: input }, { cap, mode });

@@ -70,6 +70,13 @@ const EnvSchema = z.object({
   WEB_ORIGIN: z.string().default('*'),
   SCAN_RATE_PER_HOUR: z.coerce.number().int().positive().default(30),
 
+  // Payment — pay-per-scan in USDC (SPL) on Solana. When RECEIVE_WALLET is set,
+  // /scan requires a verified 0.1 USDC payment; blank = free (rate-limited).
+  RECEIVE_WALLET: z.string().optional().default(''),
+  PRICE_USDC: z.coerce.number().positive().default(0.1),
+  PAYMENT_USDC_MINT: z.string().default('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
+  PAYMENT_DB_PATH: z.string().default('./data/payments.db'),
+
   // Runtime
   PORT: z.coerce.number().int().positive().default(8787),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -143,6 +150,14 @@ export const config = {
   web: {
     origin: env.WEB_ORIGIN,
     scanRatePerHour: env.SCAN_RATE_PER_HOUR,
+  },
+  payment: {
+    /** Blank disables payment (scan stays free + rate-limited). */
+    receiveWallet: env.RECEIVE_WALLET,
+    priceUsdc: env.PRICE_USDC,
+    usdcMint: env.PAYMENT_USDC_MINT,
+    dbPath: env.PAYMENT_DB_PATH,
+    required: env.RECEIVE_WALLET.trim().length > 0,
   },
   runtime: {
     port: env.PORT,
