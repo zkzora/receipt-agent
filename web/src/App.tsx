@@ -227,7 +227,6 @@ export function App() {
             <a href={CROO_URL} target="_blank" rel="noreferrer">
               CROO Agent Store
             </a>
-            <a href="#">GitHub (MIT)</a>
           </div>
         </div>
       </footer>
