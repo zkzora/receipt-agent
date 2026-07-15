@@ -49,7 +49,10 @@ async function main(): Promise<void> {
     reply.header('access-control-allow-origin', config.web.origin);
     reply.header('vary', 'Origin');
     reply.header('access-control-allow-methods', 'GET,POST,OPTIONS');
-    reply.header('access-control-allow-headers', 'content-type');
+    // Reflect whatever the browser asks for (web3.js adds a `solana-client` header
+    // on top of content-type), so the RPC proxy preflight doesn't get rejected.
+    const reqHeaders = req.headers['access-control-request-headers'];
+    reply.header('access-control-allow-headers', reqHeaders ?? 'content-type');
     reply.header('access-control-max-age', '86400');
     if (req.method === 'OPTIONS') return reply.code(204).send();
   });
@@ -78,6 +81,54 @@ async function main(): Promise<void> {
         }
       : null,
   }));
+
+  // ── Solana RPC proxy (browser → agent → Alchemy). ─────────────────────────
+  // Keeps the RPC key server-side so the website never ships it (the key is
+  // shared with other projects, so it must not leak into the public bundle).
+  // Only the read + send methods the payment flow needs are whitelisted, so this
+  // can't be abused as a general-purpose RPC against our quota.
+  const RPC_ALLOWED_METHODS = new Set([
+    'getAccountInfo',
+    'getMultipleAccounts',
+    'getBalance',
+    'getTokenAccountBalance',
+    'getTokenAccountsByOwner',
+    'getLatestBlockhash',
+    'getRecentBlockhash',
+    'getFeeForMessage',
+    'getMinimumBalanceForRentExemption',
+    'getSignatureStatuses',
+    'getSignatureStatus',
+    'sendTransaction',
+    'simulateTransaction',
+    'getBlockHeight',
+    'getSlot',
+    'getEpochInfo',
+    'getGenesisHash',
+    'getVersion',
+  ]);
+  app.post('/rpc', async (request, reply) => {
+    const body = request.body as unknown;
+    const calls = Array.isArray(body) ? body : [body];
+    for (const c of calls) {
+      const method = (c as { method?: unknown })?.method;
+      if (typeof method !== 'string' || !RPC_ALLOWED_METHODS.has(method)) {
+        return reply.code(403).send({ error: 'method_not_allowed', method: String(method) });
+      }
+    }
+    try {
+      const upstream = await fetch(config.solana.rpcUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const text = await upstream.text();
+      return reply.code(upstream.status).type('application/json').send(text);
+    } catch (err) {
+      log.error({ err }, 'rpc proxy failed');
+      return reply.code(502).send({ error: 'rpc_upstream_failed' });
+    }
+  });
 
   // ── Public scan endpoint (website → agent). ───────────────────────────────
   // Free + per-IP rate-limited for now; 0.1 USDC payment gating is the next step

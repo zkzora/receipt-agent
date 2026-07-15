@@ -7,10 +7,11 @@ import { App } from './App.tsx';
 import './index.css';
 
 /** RPC the browser uses to build + confirm the payment tx.
- *  The public `api.mainnet-beta.solana.com` blocks browser calls with 403, so we
- *  default to a keyless CORS-friendly endpoint. For production reliability set
- *  VITE_SOLANA_RPC to your own (Helius/Alchemy/QuickNode) in Cloudflare env. */
-const RPC = (import.meta.env.VITE_SOLANA_RPC as string | undefined) ?? 'https://solana-rpc.publicnode.com';
+ *  Defaults to the agent's own `/rpc` proxy, which forwards to Alchemy server-side
+ *  so the (shared) RPC key never ships in the bundle. Override with VITE_SOLANA_RPC
+ *  only if you have a browser-safe/domain-locked endpoint. */
+const AGENT = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8787';
+const RPC = (import.meta.env.VITE_SOLANA_RPC as string | undefined) ?? `${AGENT}/rpc`;
 
 function Root() {
   // Empty wallet list → the Solana Wallet Standard auto-detects installed wallets

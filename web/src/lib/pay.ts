@@ -44,6 +44,24 @@ export async function payForScan(
   tx.recentBlockhash = latest.blockhash;
 
   const sig = await sendTransaction(tx, connection);
-  await connection.confirmTransaction({ signature: sig, ...latest }, 'confirmed');
+  await confirmBySignature(connection, sig);
   return sig;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Confirm a signature by polling `getSignatureStatuses` over HTTP. We avoid
+ * `connection.confirmTransaction`, which opens a websocket — the agent's `/rpc`
+ * proxy is HTTP-only. Resolves once the tx is confirmed/finalized; throws on an
+ * on-chain error or after ~90s.
+ */
+async function confirmBySignature(connection: Connection, sig: string): Promise<void> {
+  for (let i = 0; i < 45; i++) {
+    const st = (await connection.getSignatureStatuses([sig])).value[0];
+    if (st?.err) throw new Error('Payment transaction failed on-chain.');
+    if (st && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized')) return;
+    await sleep(2000);
+  }
+  throw new Error('Timed out confirming payment — check your wallet; it may have gone through.');
 }
